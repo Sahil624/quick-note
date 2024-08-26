@@ -23,6 +23,7 @@ fs.access(dir, fs.constants.F_OK, (err) => {
     // Now write to file
     try {
         fs.writeFileSync(dir + "/" + prodFile, content);
+        console.log('Content', content)
         console.log("Created successfully in", process.cwd());
     } catch (error) {
         console.error(error);
