@@ -1,0 +1,33 @@
+<mat-toolbar class="topbar">
+  <!-- Mobile Menu -->
+  <button mat-icon-button (click)="toggleMobileNav.emit()" *ngIf="!showToggle">
+    <mat-icon aria-hidden="false" fontIcon="menu"></mat-icon>
+  </button>
+  <!-- --------------------------------------------------------------- -->
+
+  <!-- --------------------------------------------------------------- -->
+  <!-- Notification Dropdown -->
+  <!-- --------------------------------------------------------------- -->
+
+  <!-- <button mat-icon-button aria-label="Notifications">
+      <mat-icon aria-hidden="false" fontIcon="notifications"></mat-icon>
+    </button> -->
+
+  <span class="flex-1-auto"></span>
+
+  <!-- --------------------------------------------------------------- -->
+  <!-- profile Dropdown -->
+  <!-- --------------------------------------------------------------- -->
+  <button mat-icon-button [matMenuTriggerFor]="profilemenu" aria-label="Notifications">
+    <img src="https://t.ly/a_iy9" class="rounded-circle object-cover" width="35" />
+  </button>
+  <mat-menu #profilemenu="matMenu" class="topbar-dd cardWithShadow">
+    <button mat-menu-item>
+      <mat-icon class="d-flex align-items-center" fontIcon="person"></mat-icon>
+      My Profile
+    </button>
+    <div class="p-x-12 m-t-12">
+      <a [routerLink]="['/authentication/login']" mat-stroked-button color="primary" class="w-100">Logout</a>
+    </div>
+  </mat-menu>
+</mat-toolbar>

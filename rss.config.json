@@ -1,0 +1,21 @@
+{
+    "title": "Your Title",
+    "description": "Page description",
+    "id": "https://your-domain.com",
+    "link": "https://your-domain.com",
+    "language": "en",
+    "image": "https://your-domain.com/featured.png",
+    "favicon": "https://you-domain.com/favicon.png",
+    "copyright": "2020 your-domain.com",
+    "generator": "Page description",
+    "filename": "feed",
+    "feedLinks": {
+      "atom": "https://your-domain.com/feed.atom",
+      "json": "https://your-domain.com/feed.json",
+      "xml": "https://your-domain.com/feed.xml"
+    },
+    "outDir": "./dist/static",
+    "categories": ["Categories", "of", "your", "choice"],
+    "blogPostRouteSlug": "/blog",
+    "newestPostsFirst": true
+  }

@@ -1,0 +1,33 @@
+<div class="container">
+    <h2>Notes</h2>
+
+    <div class="note-list row">
+        <div class="col-sm-6 col-lg-3 margin"  *ngFor="let note of notes | async">
+            <mat-card class="cardWithShadow productcard overflow-hidden">
+                <!-- <a routerLink="/widgets/cards">
+                <img
+                  src="{{ productcard.imgSrc }}"
+                  alt="imgSrc"
+                  class="w-100"
+                  mat-card-image
+                />
+              </a> -->
+                <mat-card-content class="p-b-24 p-t-12 position-relative">
+
+                    <mat-card-title class="mat-headline-2 f-s-16 m-b-4">
+                        {{ note.title }}
+                    </mat-card-title>
+                    <div class="d-flex align-items-center justify-content-between">
+                       <span [innerHtml]="note.content.substring(0,30)"></span>
+                    </div>
+                    <!-- <button mat-mini-fab color="primary" class="icon-30 cart-btn" matTooltip="Add to Cart">
+                        <mat-icon aria-hidden="false" fontIcon="edit"></mat-icon>
+                    </button> -->
+                </mat-card-content>
+            </mat-card>
+        </div>
+    </div>
+    <button mat-fab class="floating-fab" routerLink="create">
+        <mat-icon>add</mat-icon>
+      </button>
+</div>

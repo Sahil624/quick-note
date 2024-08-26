@@ -1,0 +1,11 @@
+<div class="flex-layout">
+  <div class="branding">
+    <a href="/">
+      <img src="https://modernize-angular-free.netlify.app/assets/images/logos/dark-logo.svg" class="align-middle m-2"
+        alt="logo" />
+    </a>
+  </div>
+  <mat-nav-list class="sidebar-list">
+    <qn-nav-item *ngFor="let item of navItems" [item]="item"> </qn-nav-item>
+  </mat-nav-list>
+</div>

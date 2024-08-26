@@ -1,0 +1,11 @@
+identifier: l3zap423355fy9ob
+appPort: 1864
+staticPort: 1668
+reloadPort: 2667
+hostName: localhost
+projectName: quick-notes
+homeFolder: /Users/sahilmangotra/Documents/code.nosync/quick-notes
+distFolder: ./dist/quick-notes/browser
+outDir: /Users/sahilmangotra/Documents/code.nosync/quick-notes/dist/static
+handle404: ''
+allowErrorCollect: false

@@ -1,1 +1,24 @@
-/* You can add global styles to this file, and also import other style files */
+@use "@angular/material" as mat;
+@include mat.core();
+
+
+@import "styles/variables";
+
+// @import "styles/layouts/transitions";
+@import "styles/helpers/color";
+@import "styles/helpers/icon-size";
+@import "styles/container";
+
+@import "styles/theme/default_theme";
+@include mat.all-component-themes($bluetheme);
+
+@import "styles/overrides/materialoverrides";
+
+
+// Layout
+@import "styles/layout/layout";
+@import "styles/pages/auth";
+
+@import "styles/grid/grid";
+@import "styles/helpers/custom-flex";
+@import "styles/helpers/index";

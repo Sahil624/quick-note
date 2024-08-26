@@ -1,0 +1,36 @@
+name: Deploy Angular App with Scully to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main  # You can replace 'main' with the branch you want to deploy from
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'  # Use the appropriate Node.js version
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Replace Env values
+        run: node env.js
+
+      - name: Build Angular App
+        run: npm run build --prod
+
+      - name: Run Scully to Generate Static Site
+        run: npm run scully
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages  # Target branch for GitHub Pages
+          folder: dist/static  # Output folder for Scully (can be different if configured)
