@@ -12,3 +12,8 @@ $columns: 48;
 }
 
 @include icon_size;
+
+.fit-image {
+  height: 100%;
+  width: 100%;
+}
