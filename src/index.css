@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+:root {
+  /* Warm / Minimal Theme Palette */
+  --color-bg-primary: #f8f8f8;
+  /* Main app background */
+  --color-bg-secondary: #ffffff;
+  /* Cards / Sidebar / Panels */
+  --color-bg-tertiary: #f0f0f0;
+  /* Hover states / Inputs */
+
+  --color-text-primary: #1f2937;
+  /* Dark gray for main text */
+  --color-text-secondary: #6b7280;
+  /* Medium gray for secondary text */
+
+  --color-accent: #fb923c;
+  /* Orange accent */
+  --color-accent-hover: #f97316;
+
+  --color-border: #e5e7eb;
+
+  /* Layout Dimensions */
+  --sidebar-width: 260px;
+  --notelist-width: 320px;
+}

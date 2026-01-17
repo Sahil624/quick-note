@@ -1,9 +1,9 @@
-name: Deploy Angular App with Scully to GitHub Pages
+name: Deploy Quick-Notes to GitHub Pages
 
 on:
   push:
     branches:
-      - main  # You can replace 'main' with the branch you want to deploy from
+      - main
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -11,16 +11,10 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment
 concurrency:
   group: "pages"
   cancel-in-progress: false
-
-# Default to bash
-defaults:
-  run:
-    shell: bash
 
 jobs:
   build:
@@ -32,32 +26,29 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'  # Use the appropriate Node.js version
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Replace Env values
-        env:
-          FIREBASE_DETAILS: ${{ vars.FIREBASE_DETAILS }}
-        run: node env.js
+      - name: Inject Firebase Config
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}" >> .env.production
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}" >> .env.production
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env.production
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}" >> .env.production
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}" >> .env.production
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}" >> .env.production
+          echo "VITE_FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID }}" >> .env.production
 
-      - name: Build Angular App
-        run: npx ng build --configuration=production 
+      - name: Build
+        run: npm run build
 
-      - name: Run Scully to Generate Static Site
-        run: npx scully --project quick-notes
-         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist/static
-
-      # - name: Deploy to GitHub Pages
-      #   uses: JamesIves/github-pages-deploy-action@v4
-      #   with:
-      #     branch: main  # Target branch for GitHub Pages
-      #     folder: dist/static  # Output folder for Scully (can be different if configured)
+          path: ./dist
 
   deploy:
     environment:
