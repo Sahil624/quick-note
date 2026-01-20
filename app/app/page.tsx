@@ -14,26 +14,33 @@ import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog'
+import { Diagram, LocalNote, Note } from '@/lib/types'
 
 type EditorMode = 'none' | 'note' | 'diagram' | 'local-note'
 
 export default function AppPage() {
   const { user, isAnonymous } = useAuth()
-  const { 
-    notes, 
-    diagrams, 
-    folders, 
-    localNotes, 
-    createNote, 
+  const {
+    notes,
+    diagrams,
+    folders,
+    localNotes,
+    createNote,
+    updateNote,
+    deleteNote,
     createDiagram,
+    updateDiagram,
+    deleteDiagram,
     createLocalNote,
     updateLocalNote,
     deleteLocalNote,
     shareLocalNote,
   } = useNotes()
-  
+
   const [editorMode, setEditorMode] = useState<EditorMode>('none')
   const [editingLocalNoteId, setEditingLocalNoteId] = useState<string | null>(null)
+  const [editingDiagram, setEditingDiagram] = useState<Diagram | null>(null)
+  const [editingNote, setEditingNote] = useState<Note | null>(null)
 
   const handleNewNote = useCallback(() => {
     if (isAnonymous) {
@@ -43,24 +50,47 @@ export default function AppPage() {
     }
   }, [isAnonymous])
 
+  const handleEditNote = useCallback((note: Note | LocalNote) => {
+    if (isAnonymous) {
+      setEditorMode('local-note')
+      setEditingLocalNoteId(note.id)
+    } else {
+      setEditorMode('note')
+      setEditingNote(note as Note)
+    }
+  }, [])
+
+  const handleDeleteNote = useCallback(() => {
+    if (isAnonymous) {
+      deleteLocalNote(editingLocalNoteId!)
+    } else {
+      deleteNote(editingNote!.id)
+    }
+    setEditorMode('none')
+  }, [editingNote])
+
   const handleNewDiagram = useCallback(() => {
     setEditorMode('diagram')
   }, [])
 
-  const handleSaveNote = useCallback(async (data: { 
-    title: string; 
-    content: string; 
+  const handleSaveNote = useCallback(async (data: {
+    title: string;
+    content: string;
     tags: string[];
     folderId: string | null;
     linkedArtifacts: string[];
   }) => {
     try {
-      await createNote(data.title, data.content, data.folderId, data.tags, data.linkedArtifacts)
+      if (editingNote) {
+        await updateNote(editingNote.id, data)
+      } else {
+        await createNote(data.title, data.content, data.folderId, data.tags, data.linkedArtifacts)
+      }
       setEditorMode('none')
     } catch (error) {
       console.error('Error creating note:', error)
     }
-  }, [createNote])
+  }, [createNote, editingNote])
 
   const handleSaveDiagram = useCallback(async (data: {
     title: string;
@@ -69,12 +99,23 @@ export default function AppPage() {
     folderId: string | null;
   }) => {
     try {
-      await createDiagram(data.title, data.content, data.folderId, data.tags)
+      if (editingDiagram) {
+        await updateDiagram(editingDiagram.id, data)
+      } else {
+        await createDiagram(data.title, data.content, data.folderId, data.tags)
+      }
       setEditorMode('none')
     } catch (error) {
       console.error('Error creating diagram:', error)
     }
-  }, [createDiagram])
+  }, [createDiagram, editingDiagram])
+
+  const handleDeleteDiagram = useCallback(() => {
+    if (!editingDiagram) return
+    deleteDiagram(editingDiagram.id)
+    setEditorMode('none')
+    setEditingDiagram(null)
+  }, [deleteDiagram, editingDiagram])
 
   const handleSaveLocalNote = useCallback((data: { title: string; content: string }) => {
     if (editingLocalNoteId) {
@@ -102,12 +143,17 @@ export default function AppPage() {
     }
   }, [shareLocalNote])
 
-  const editingLocalNote = editingLocalNoteId 
-    ? localNotes.find(n => n.id === editingLocalNoteId) 
+  const handleEditDiagram = useCallback((diagram: Diagram) => {
+    setEditingDiagram(diagram)
+    setEditorMode('diagram')
+  }, [])
+
+  const editingLocalNote = editingLocalNoteId
+    ? localNotes.find(n => n.id === editingLocalNoteId)
     : null
 
-  const recentNotes = isAnonymous 
-    ? localNotes.slice(0, 5) 
+  const recentNotes = isAnonymous
+    ? localNotes.slice(0, 5)
     : notes.slice(0, 5)
 
   const recentDiagrams = diagrams.slice(0, 3)
@@ -115,7 +161,7 @@ export default function AppPage() {
   return (
     <div className="h-screen flex bg-background">
       <AppSidebar onNewNote={handleNewNote} onNewDiagram={handleNewDiagram} />
-      
+
       <main className="flex-1 overflow-auto">
         <div className="p-6 max-w-5xl mx-auto">
           {/* Welcome Header */}
@@ -124,8 +170,8 @@ export default function AppPage() {
               {isAnonymous ? 'Welcome to QuickNote' : `Welcome back${user?.displayName ? `, ${user.displayName}` : ''}`}
             </h1>
             <p className="text-muted-foreground">
-              {isAnonymous 
-                ? 'Your notes are saved locally. Sign in for cloud sync and more features.' 
+              {isAnonymous
+                ? 'Your notes are saved locally. Sign in for cloud sync and more features.'
                 : 'Your notes are synced across all your devices.'
               }
             </p>
@@ -133,7 +179,7 @@ export default function AppPage() {
 
           {/* Quick Actions */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            <Card 
+            <Card
               className="cursor-pointer hover:border-primary/50 transition-colors"
               onClick={handleNewNote}
             >
@@ -149,7 +195,7 @@ export default function AppPage() {
             </Card>
 
             {!isAnonymous && (
-              <Card 
+              <Card
                 className="cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={handleNewDiagram}
               >
@@ -193,7 +239,7 @@ export default function AppPage() {
               )}
             </div>
             {recentNotes.length === 0 ? (
-              <Card className="border-dashed">
+              <Card className="border-dashed" onClick={handleNewNote}>
                 <CardContent className="p-8 text-center">
                   <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">No notes yet. Create your first note!</p>
@@ -206,10 +252,10 @@ export default function AppPage() {
             ) : (
               <div className="grid gap-4">
                 {recentNotes.map((note) => (
-                  <Card 
-                    key={note.id} 
+                  <Card
+                    key={note.id}
                     className="cursor-pointer hover:border-primary/50 transition-colors"
-                    onClick={() => isAnonymous ? handleEditLocalNote(note.id) : null}
+                    onClick={() => handleEditNote(note)}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
@@ -223,9 +269,9 @@ export default function AppPage() {
                           </p>
                         </div>
                         {isAnonymous && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="ml-2"
                             onClick={(e) => {
                               e.stopPropagation()
@@ -268,7 +314,7 @@ export default function AppPage() {
               ) : (
                 <div className="grid md:grid-cols-3 gap-4">
                   {recentDiagrams.map((diagram) => (
-                    <Card key={diagram.id} className="cursor-pointer hover:border-primary/50 transition-colors">
+                    <Card key={diagram.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => handleEditDiagram(diagram)}>
                       <CardContent className="p-4">
                         <h3 className="font-medium text-foreground truncate mb-2">{diagram.title}</h3>
                         <div className="h-32 bg-muted/50 rounded-lg overflow-hidden flex items-center justify-center">
@@ -286,20 +332,30 @@ export default function AppPage() {
 
       {/* Editor Dialog */}
       <Dialog open={editorMode !== 'none'} onOpenChange={(open) => !open && setEditorMode('none')}>
-        <DialogContent className="max-w-5xl h-[85vh] p-0 gap-0">
+        <DialogContent className="max-w-lg w-full md:max-w-[80vw] w-[80vw] h-[80vh] p-0 gap-0 top-[50vh]">
           {editorMode === 'note' && (
             <NoteEditor
               folders={folders}
               diagrams={diagrams}
               onSave={handleSaveNote}
+              onDelete={handleDeleteNote}
               onCancel={() => setEditorMode('none')}
+              initialTitle={editingNote?.title}
+              initialContent={editingNote?.content}
+              initialTags={editingNote?.tags}
+              initialFolderId={editingNote?.folderId}
             />
           )}
           {editorMode === 'diagram' && (
             <DiagramEditor
               folders={folders}
               onSave={handleSaveDiagram}
+              onDelete={handleDeleteDiagram}
               onCancel={() => setEditorMode('none')}
+              initialTitle={editingDiagram?.title}
+              initialContent={editingDiagram?.content}
+              initialTags={editingDiagram?.tags}
+              initialFolderId={editingDiagram?.folderId}
             />
           )}
           {editorMode === 'local-note' && (

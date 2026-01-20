@@ -11,7 +11,7 @@ export default function LandingPage() {
       {/* Header */}
       <header className="border-b border-border">
         <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/app" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <FileText className="w-4 h-4 text-primary-foreground" />
             </div>

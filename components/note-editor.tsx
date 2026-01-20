@@ -1,16 +1,16 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import { 
-  Bold, 
-  Italic, 
-  Heading1, 
-  Heading2, 
-  Heading3, 
-  Code, 
-  List, 
-  ListOrdered, 
-  Quote, 
+import {
+  Bold,
+  Italic,
+  Heading1,
+  Heading2,
+  Heading3,
+  Code,
+  List,
+  ListOrdered,
+  Quote,
   Link as LinkIcon,
   ImageIcon,
   GitBranch,
@@ -22,7 +22,8 @@ import {
   X,
   Tag,
   FolderOpen,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,14 +54,15 @@ interface NoteEditorProps {
   initialLinkedArtifacts?: string[]
   folders?: Folder[]
   diagrams?: Diagram[]
-  onSave: (data: { 
-    title: string; 
-    content: string; 
+  onSave: (data: {
+    title: string;
+    content: string;
     tags: string[];
     folderId: string | null;
     linkedArtifacts: string[];
   }) => void
   onCancel?: () => void
+  onDelete?: () => void
   isAnonymous?: boolean
 }
 
@@ -76,6 +78,7 @@ export function NoteEditor({
   diagrams = [],
   onSave,
   onCancel,
+  onDelete,
   isAnonymous = false,
 }: NoteEditorProps) {
   const [title, setTitle] = useState(initialTitle)
@@ -95,9 +98,9 @@ export function NoteEditor({
     const end = textarea.selectionEnd
     const selectedText = content.substring(start, end) || placeholder
     const newText = content.substring(0, start) + before + selectedText + after + content.substring(end)
-    
+
     setContent(newText)
-    
+
     // Set cursor position after the operation
     setTimeout(() => {
       textarea.focus()
@@ -134,12 +137,12 @@ export function NoteEditor({
   }, [tags])
 
   const handleSave = useCallback(() => {
-    onSave({ 
-      title: title || 'Untitled Note', 
-      content, 
-      tags, 
+    onSave({
+      title: title || 'Untitled Note',
+      content,
+      tags,
       folderId,
-      linkedArtifacts 
+      linkedArtifacts
     })
   }, [title, content, tags, folderId, linkedArtifacts, onSave])
 
@@ -202,6 +205,11 @@ export function NoteEditor({
               <X className="w-4 h-4" />
             </Button>
           )}
+          {onDelete && (
+            <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:text-destructive">
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
           <Button size="sm" onClick={handleSave}>
             <Save className="w-4 h-4 mr-2" />
             Save
@@ -224,7 +232,7 @@ export function NoteEditor({
               <Icon className="w-4 h-4" />
             </Button>
           ))}
-          
+
           {!isAnonymous && (
             <>
               <div className="w-px h-6 bg-border mx-2" />

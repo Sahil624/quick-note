@@ -260,7 +260,7 @@ function DiagramsContent() {
           setEditingDiagram(null)
         }
       }}>
-        <DialogContent className="max-w-5xl h-[85vh] p-0 gap-0">
+        <DialogContent className="container max-h-[85vh] h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
           <DiagramEditor
             initialTitle={editingDiagram?.title}
             initialContent={editingDiagram?.content}
@@ -272,6 +272,11 @@ function DiagramsContent() {
               setEditorOpen(false)
               setEditingDiagram(null)
             }}
+            onDelete={editingDiagram ? () => {
+              handleDeleteDiagram(editingDiagram.id)
+              setEditorOpen(false)
+              setEditingDiagram(null)
+            } : undefined}
           />
         </DialogContent>
       </Dialog>
