@@ -29,11 +29,12 @@ interface NotesContextType {
   folders: Folder[]
   localNotes: LocalNote[]
   loading: boolean
+  permissionError: string | null
   trashedItems: Artifact[]
   
   // Note operations
   createNote: (title: string, content: string, folderId?: string | null, tags?: string[], linkedArtifacts?: string[]) => Promise<string>
-  updateNote: (id: string, updates: Partial<Note>) => Promise<void>
+  updateNote: (id: string, updates: Partial<Note>, options?: { createVersion?: boolean }) => Promise<void>
   deleteNote: (id: string, permanent?: boolean) => Promise<void>
   restoreNote: (id: string) => Promise<void>
   permanentlyDeleteNote: (id: string) => Promise<void>
@@ -77,12 +78,13 @@ const NotesContext = createContext<NotesContextType | undefined>(undefined)
 const LOCAL_STORAGE_KEY = 'quicknote_local_notes'
 
 export function NotesProvider({ children }: { children: ReactNode }) {
-  const { user, isAnonymous } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [notes, setNotes] = useState<Note[]>([])
   const [diagrams, setDiagrams] = useState<Diagram[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
   const [localNotes, setLocalNotes] = useState<LocalNote[]>([])
   const [loading, setLoading] = useState(true)
+  const [permissionError, setPermissionError] = useState<string | null>(null)
 
   // Load local notes from localStorage
   useEffect(() => {
@@ -112,15 +114,33 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   // Subscribe to Firestore data when user is logged in
   useEffect(() => {
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
+
     if (!user) {
       setNotes([])
       setDiagrams([])
       setFolders([])
+      setPermissionError(null)
       setLoading(false)
       return
     }
 
     setLoading(true)
+    setPermissionError(null)
+
+    const handleSnapshotError = (error: Error, source: string) => {
+      console.error(`Firestore ${source} listener error:`, error)
+      const message = error.message || String(error)
+      if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
+        setPermissionError(
+          'Cloud sync is blocked by Firestore security rules. Deploy firestore.rules for this project, then refresh.'
+        )
+      }
+      setLoading(false)
+    }
 
     // Subscribe to notes
     const notesQuery = query(
@@ -130,20 +150,25 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       orderBy('updatedAt', 'desc')
     )
 
-    const unsubscribeNotes = onSnapshot(notesQuery, (snapshot) => {
-      const notesData: Note[] = snapshot.docs.map((doc) => {
-        const data = doc.data()
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
-          updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
-          deletedAt: data.deletedAt ? (data.deletedAt as Timestamp).toDate() : null,
-          versions: data.versions || [],
-        } as Note
-      })
-      setNotes(notesData)
-    })
+    const unsubscribeNotes = onSnapshot(
+      notesQuery,
+      (snapshot) => {
+        const notesData: Note[] = snapshot.docs.map((doc) => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
+            updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
+            deletedAt: data.deletedAt ? (data.deletedAt as Timestamp).toDate() : null,
+            versions: data.versions || [],
+          } as Note
+        })
+        setNotes(notesData)
+        setPermissionError(null)
+      },
+      (error) => handleSnapshotError(error, 'notes')
+    )
 
     // Subscribe to diagrams
     const diagramsQuery = query(
@@ -153,19 +178,23 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       orderBy('updatedAt', 'desc')
     )
 
-    const unsubscribeDiagrams = onSnapshot(diagramsQuery, (snapshot) => {
-      const diagramsData: Diagram[] = snapshot.docs.map((doc) => {
-        const data = doc.data()
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
-          updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
-          deletedAt: data.deletedAt ? (data.deletedAt as Timestamp).toDate() : null,
-        } as Diagram
-      })
-      setDiagrams(diagramsData)
-    })
+    const unsubscribeDiagrams = onSnapshot(
+      diagramsQuery,
+      (snapshot) => {
+        const diagramsData: Diagram[] = snapshot.docs.map((doc) => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
+            updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
+            deletedAt: data.deletedAt ? (data.deletedAt as Timestamp).toDate() : null,
+          } as Diagram
+        })
+        setDiagrams(diagramsData)
+      },
+      (error) => handleSnapshotError(error, 'diagrams')
+    )
 
     // Subscribe to folders
     const foldersQuery = query(
@@ -174,26 +203,30 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       orderBy('name', 'asc')
     )
 
-    const unsubscribeFolders = onSnapshot(foldersQuery, (snapshot) => {
-      const foldersData: Folder[] = snapshot.docs.map((doc) => {
-        const data = doc.data()
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
-          updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
-        } as Folder
-      })
-      setFolders(foldersData)
-      setLoading(false)
-    })
+    const unsubscribeFolders = onSnapshot(
+      foldersQuery,
+      (snapshot) => {
+        const foldersData: Folder[] = snapshot.docs.map((doc) => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
+            updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
+          } as Folder
+        })
+        setFolders(foldersData)
+        setLoading(false)
+      },
+      (error) => handleSnapshotError(error, 'folders')
+    )
 
     return () => {
       unsubscribeNotes()
       unsubscribeDiagrams()
       unsubscribeFolders()
     }
-  }, [user])
+  }, [user, authLoading])
 
   // Note operations
   const createNote = async (
@@ -226,7 +259,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     return docRef.id
   }
 
-  const updateNote = async (id: string, updates: Partial<Note>) => {
+  const updateNote = async (
+    id: string,
+    updates: Partial<Note>,
+    options?: { createVersion?: boolean }
+  ) => {
     if (!user) throw new Error('Must be logged in')
 
     const noteRef = doc(db, 'artifacts', id)
@@ -235,10 +272,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     if (!noteDoc.exists()) throw new Error('Note not found')
     
     const currentData = noteDoc.data() as Note
+    const createVersion = options?.createVersion !== false
     
-    // Create version history if content changed
+    // Create version history if content changed (skip for autosave)
     let versions = currentData.versions || []
-    if (updates.content && updates.content !== currentData.content) {
+    if (
+      createVersion &&
+      updates.content &&
+      updates.content !== currentData.content
+    ) {
       const newVersion: NoteVersion = {
         id: nanoid(),
         noteId: id,
@@ -252,7 +294,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
     await updateDoc(noteRef, {
       ...updates,
-      versions,
+      ...(createVersion ? { versions } : {}),
       updatedAt: serverTimestamp(),
     })
   }
@@ -568,6 +610,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         folders,
         localNotes,
         loading,
+        permissionError,
         trashedItems,
         createNote,
         updateNote,

@@ -13,12 +13,22 @@ import { useNotes } from '@/lib/notes-context'
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog'
 import { Diagram, LocalNote, Note } from '@/lib/types'
+import {
+  EDITOR_DIALOG_CONTENT_CLASS,
+  stashNoteDraft,
+  stashDiagramDraft,
+  noteEditorHref,
+  diagramEditorHref,
+} from '@/lib/editor-dialog'
+import { useRouter } from 'next/navigation'
 
 type EditorMode = 'none' | 'note' | 'diagram' | 'local-note'
 
 export default function AppPage() {
+  const router = useRouter()
   const { user, isAnonymous } = useAuth()
   const {
     notes,
@@ -35,6 +45,7 @@ export default function AppPage() {
     updateLocalNote,
     deleteLocalNote,
     shareLocalNote,
+    permissionError,
   } = useNotes()
 
   const [editorMode, setEditorMode] = useState<EditorMode>('none')
@@ -58,6 +69,11 @@ export default function AppPage() {
       setEditorMode('note')
       setEditingNote(note as Note)
     }
+  }, [isAnonymous])
+
+  const handleEditDiagram = useCallback((diagram: Diagram) => {
+    setEditingDiagram(diagram)
+    setEditorMode('diagram')
   }, [])
 
   const handleDeleteNote = useCallback(() => {
@@ -73,42 +89,80 @@ export default function AppPage() {
     setEditorMode('diagram')
   }, [])
 
-  const handleSaveNote = useCallback(async (data: {
-    title: string;
-    content: string;
-    tags: string[];
-    folderId: string | null;
-    linkedArtifacts: string[];
-  }) => {
+  const handleSaveNote = useCallback(async (
+    data: {
+      title: string
+      content: string
+      tags: string[]
+      folderId: string | null
+      linkedArtifacts: string[]
+    },
+    options?: { reason?: 'manual' | 'autosave' }
+  ) => {
+    const autosave = options?.reason === 'autosave'
     try {
       if (editingNote) {
-        await updateNote(editingNote.id, data)
+        await updateNote(editingNote.id, data, { createVersion: !autosave })
       } else {
-        await createNote(data.title, data.content, data.folderId, data.tags, data.linkedArtifacts)
+        const id = await createNote(data.title, data.content, data.folderId, data.tags, data.linkedArtifacts)
+        if (autosave) {
+          setEditingNote({
+            id,
+            title: data.title,
+            content: data.content,
+            tags: data.tags,
+            folderId: data.folderId,
+            linkedArtifacts: data.linkedArtifacts,
+          } as Note)
+          return
+        }
       }
-      setEditorMode('none')
+      if (!autosave) {
+        setEditorMode('none')
+        setEditingNote(null)
+      }
     } catch (error) {
       console.error('Error creating note:', error)
+      throw error
     }
-  }, [createNote, editingNote])
+  }, [createNote, editingNote, updateNote])
 
-  const handleSaveDiagram = useCallback(async (data: {
-    title: string;
-    content: string;
-    tags: string[];
-    folderId: string | null;
-  }) => {
+  const handleSaveDiagram = useCallback(async (
+    data: {
+      title: string
+      content: string
+      tags: string[]
+      folderId: string | null
+    },
+    options?: { reason?: 'manual' | 'autosave' }
+  ) => {
+    const autosave = options?.reason === 'autosave'
     try {
       if (editingDiagram) {
         await updateDiagram(editingDiagram.id, data)
       } else {
-        await createDiagram(data.title, data.content, data.folderId, data.tags)
+        const id = await createDiagram(data.title, data.content, data.folderId, data.tags)
+        if (autosave) {
+          setEditingDiagram({
+            id,
+            title: data.title,
+            content: data.content,
+            tags: data.tags,
+            folderId: data.folderId,
+            diagramType: 'mermaid',
+          } as Diagram)
+          return
+        }
       }
-      setEditorMode('none')
+      if (!autosave) {
+        setEditorMode('none')
+        setEditingDiagram(null)
+      }
     } catch (error) {
       console.error('Error creating diagram:', error)
+      throw error
     }
-  }, [createDiagram, editingDiagram])
+  }, [createDiagram, editingDiagram, updateDiagram])
 
   const handleDeleteDiagram = useCallback(() => {
     if (!editingDiagram) return
@@ -117,14 +171,24 @@ export default function AppPage() {
     setEditingDiagram(null)
   }, [deleteDiagram, editingDiagram])
 
-  const handleSaveLocalNote = useCallback((data: { title: string; content: string }) => {
+  const handleSaveLocalNote = useCallback((
+    data: { title: string; content: string },
+    options?: { reason?: 'manual' | 'autosave' }
+  ) => {
+    const autosave = options?.reason === 'autosave'
     if (editingLocalNoteId) {
       updateLocalNote(editingLocalNoteId, { title: data.title, content: data.content })
-      setEditingLocalNoteId(null)
     } else {
-      createLocalNote(data.title, data.content)
+      const id = createLocalNote(data.title, data.content)
+      if (autosave) {
+        setEditingLocalNoteId(id)
+        return
+      }
     }
-    setEditorMode('none')
+    if (!autosave) {
+      setEditingLocalNoteId(null)
+      setEditorMode('none')
+    }
   }, [createLocalNote, updateLocalNote, editingLocalNoteId])
 
   const handleEditLocalNote = useCallback((id: string) => {
@@ -143,11 +207,6 @@ export default function AppPage() {
     }
   }, [shareLocalNote])
 
-  const handleEditDiagram = useCallback((diagram: Diagram) => {
-    setEditingDiagram(diagram)
-    setEditorMode('diagram')
-  }, [])
-
   const editingLocalNote = editingLocalNoteId
     ? localNotes.find(n => n.id === editingLocalNoteId)
     : null
@@ -164,6 +223,11 @@ export default function AppPage() {
 
       <main className="flex-1 overflow-auto">
         <div className="p-6 max-w-5xl mx-auto">
+          {permissionError && (
+            <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {permissionError}
+            </div>
+          )}
           {/* Welcome Header */}
           <div className="mb-8">
             <h1 className="text-2xl font-semibold text-foreground mb-2">
@@ -332,7 +396,10 @@ export default function AppPage() {
 
       {/* Editor Dialog */}
       <Dialog open={editorMode !== 'none'} onOpenChange={(open) => !open && setEditorMode('none')}>
-        <DialogContent className="max-w-lg w-full md:max-w-[80vw] w-[80vw] h-[80vh] p-0 gap-0 top-[50vh]">
+        <DialogContent className={EDITOR_DIALOG_CONTENT_CLASS} showCloseButton={false}>
+          <DialogTitle className="sr-only">
+            {editorMode === 'diagram' ? 'Edit diagram' : 'Edit note'}
+          </DialogTitle>
           {editorMode === 'note' && (
             <NoteEditor
               folders={folders}
@@ -340,6 +407,11 @@ export default function AppPage() {
               onSave={handleSaveNote}
               onDelete={handleDeleteNote}
               onCancel={() => setEditorMode('none')}
+              onExpand={(draft) => {
+                stashNoteDraft({ ...draft, noteId: editingNote?.id ?? null })
+                setEditorMode('none')
+                router.push(noteEditorHref({ id: editingNote?.id }))
+              }}
               initialTitle={editingNote?.title}
               initialContent={editingNote?.content}
               initialTags={editingNote?.tags}
@@ -352,6 +424,11 @@ export default function AppPage() {
               onSave={handleSaveDiagram}
               onDelete={handleDeleteDiagram}
               onCancel={() => setEditorMode('none')}
+              onExpand={(draft) => {
+                stashDiagramDraft({ ...draft, diagramId: editingDiagram?.id ?? null })
+                setEditorMode('none')
+                router.push(diagramEditorHref({ id: editingDiagram?.id }))
+              }}
               initialTitle={editingDiagram?.title}
               initialContent={editingDiagram?.content}
               initialTags={editingDiagram?.tags}
@@ -362,10 +439,20 @@ export default function AppPage() {
             <NoteEditor
               initialTitle={editingLocalNote?.title}
               initialContent={editingLocalNote?.content}
-              onSave={(data) => handleSaveLocalNote({ title: data.title, content: data.content })}
+              onSave={(data, options) => handleSaveLocalNote({ title: data.title, content: data.content }, options)}
               onCancel={() => {
                 setEditorMode('none')
                 setEditingLocalNoteId(null)
+              }}
+              onExpand={(draft) => {
+                stashNoteDraft({ ...draft, noteId: editingLocalNoteId, local: true })
+                setEditorMode('none')
+                setEditingLocalNoteId(null)
+                router.push(
+                  editingLocalNoteId
+                    ? noteEditorHref({ id: editingLocalNoteId, local: true })
+                    : noteEditorHref({ local: true })
+                )
               }}
               isAnonymous={true}
             />

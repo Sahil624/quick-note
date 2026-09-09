@@ -2,8 +2,12 @@ import React from "react"
 import Link from 'next/link'
 import { FileText, GitBranch, Calculator, Folder, Search, Share2, Clock, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-// import { Suspense } from 'react'
-// import Loading from './loading'
+import {
+  LandingAnonymousCta,
+  LandingFullCta,
+  LandingHeaderNav,
+  LandingHeroCtas,
+} from '@/components/landing-auth-ctas'
 
 export default function LandingPage() {
   return (
@@ -17,17 +21,7 @@ export default function LandingPage() {
             </div>
             <span className="font-semibold text-lg text-foreground">QuickNote</span>
           </Link>
-          <nav className="flex items-center gap-4">
-            <Link href="/app" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
-              Try Anonymous
-            </Link>
-            <Link href="/app/login">
-              <Button variant="outline" size="sm">Sign In</Button>
-            </Link>
-            <Link href="/app/signup">
-              <Button size="sm">Get Started</Button>
-            </Link>
-          </nav>
+          <LandingHeaderNav />
         </div>
       </header>
 
@@ -42,18 +36,7 @@ export default function LandingPage() {
             Create notes with Markdown, Mermaid diagrams, and Math equations.
             Organize with folders and tags. Reuse artifacts across your notes.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/app">
-              <Button size="lg" className="w-full sm:w-auto">
-                Start Writing
-              </Button>
-            </Link>
-            <Link href="/app/login">
-              <Button size="lg" variant="outline" className="w-full sm:w-auto bg-transparent">
-                Sign In for Full Features
-              </Button>
-            </Link>
-          </div>
+          <LandingHeroCtas />
         </div>
       </section>
 
@@ -187,9 +170,7 @@ export default function LandingPage() {
                   <span>No account required</span>
                 </li>
               </ul>
-              <Link href="/app" className="block mt-6">
-                <Button variant="outline" className="w-full bg-transparent">Try Anonymous</Button>
-              </Link>
+              <LandingAnonymousCta />
             </div>
             <div className="bg-card border-2 border-primary rounded-lg p-6">
               <h3 className="font-semibold text-lg mb-4 text-foreground">Full Experience</h3>
@@ -211,9 +192,7 @@ export default function LandingPage() {
                   <span>Version history and trash recovery</span>
                 </li>
               </ul>
-              <Link href="/app/signup" className="block mt-6">
-                <Button className="w-full">Create Free Account</Button>
-              </Link>
+              <LandingFullCta />
             </div>
           </div>
         </div>
@@ -228,9 +207,14 @@ export default function LandingPage() {
             </div>
             <span className="text-sm font-medium text-foreground">QuickNote</span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Fast, minimal, and focused on what matters.
-          </p>
+          <div className="text-center sm:text-right space-y-1">
+            <p className="text-sm text-muted-foreground">
+              Fast, minimal, and focused on what matters.
+            </p>
+            <p className="text-[11px] text-muted-foreground/60">
+              Notes are not encrypted — avoid storing passwords or other sensitive data.
+            </p>
+          </div>
         </div>
       </footer>
     </div>
@@ -247,8 +231,4 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
       <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   )
-}
-
-export const unstable_getServerSession = async () => {
-  return null
 }

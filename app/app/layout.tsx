@@ -2,7 +2,6 @@
 
 import React from "react"
 
-import { AuthProvider } from '@/lib/auth-context'
 import { NotesProvider } from '@/lib/notes-context'
 
 export default function AppLayout({
@@ -11,10 +10,8 @@ export default function AppLayout({
   children: React.ReactNode
 }) {
   return (
-    <AuthProvider>
-      <NotesProvider>
-        {children}
-      </NotesProvider>
-    </AuthProvider>
+    <NotesProvider>
+      {children}
+    </NotesProvider>
   )
 }

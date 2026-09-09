@@ -32,6 +32,13 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog'
 import {
+    EDITOR_DIALOG_CONTENT_CLASS,
+    stashNoteDraft,
+    stashDiagramDraft,
+    noteEditorHref,
+    diagramEditorHref,
+} from '@/lib/editor-dialog'
+import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
@@ -48,7 +55,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
 function Loading() {
@@ -64,6 +71,7 @@ export default function FolderClient({ params }: { params: Promise<{ id: string 
 }
 
 function FolderContent({ params }: { params: Promise<{ id: string }> }) {
+    const router = useRouter()
     const searchParams = useSearchParams()
     const { id } = use(params)
     const { isAnonymous } = useAuth()
@@ -131,42 +139,78 @@ function FolderContent({ params }: { params: Promise<{ id: string }> }) {
         setEditorOpen(true)
     }, [])
 
-    const handleSaveNote = useCallback(async (data: {
-        title: string;
-        content: string;
-        tags: string[];
-        folderId: string | null;
-        linkedArtifacts: string[];
-    }) => {
+    const handleSaveNote = useCallback(async (
+        data: {
+            title: string
+            content: string
+            tags: string[]
+            folderId: string | null
+            linkedArtifacts: string[]
+        },
+        options?: { reason?: 'manual' | 'autosave' }
+    ) => {
+        const autosave = options?.reason === 'autosave'
         try {
             if (editingItem && 'linkedArtifacts' in editingItem) {
-                await updateNote(editingItem.id, data)
+                await updateNote(editingItem.id, data, { createVersion: !autosave })
             } else {
-                await createNote(data.title, data.content, id, data.tags, data.linkedArtifacts)
+                const newId = await createNote(data.title, data.content, id, data.tags, data.linkedArtifacts)
+                if (autosave) {
+                    setEditingItem({
+                        id: newId,
+                        title: data.title,
+                        content: data.content,
+                        tags: data.tags,
+                        folderId: id,
+                        linkedArtifacts: data.linkedArtifacts,
+                    } as Note)
+                    return
+                }
             }
-            setEditorOpen(false)
-            setEditingItem(null)
+            if (!autosave) {
+                setEditorOpen(false)
+                setEditingItem(null)
+            }
         } catch (error) {
             console.error('Error saving note:', error)
+            throw error
         }
     }, [editingItem, createNote, updateNote, id])
 
-    const handleSaveDiagram = useCallback(async (data: {
-        title: string;
-        content: string;
-        tags: string[];
-        folderId: string | null;
-    }) => {
+    const handleSaveDiagram = useCallback(async (
+        data: {
+            title: string
+            content: string
+            tags: string[]
+            folderId: string | null
+        },
+        options?: { reason?: 'manual' | 'autosave' }
+    ) => {
+        const autosave = options?.reason === 'autosave'
         try {
             if (editingItem && 'diagramType' in editingItem) {
                 await updateDiagram(editingItem.id, data)
             } else {
-                await createDiagram(data.title, data.content, id, data.tags)
+                const newId = await createDiagram(data.title, data.content, id, data.tags)
+                if (autosave) {
+                    setEditingItem({
+                        id: newId,
+                        title: data.title,
+                        content: data.content,
+                        tags: data.tags,
+                        folderId: id,
+                        diagramType: 'mermaid',
+                    } as Diagram)
+                    return
+                }
             }
-            setEditorOpen(false)
-            setEditingItem(null)
+            if (!autosave) {
+                setEditorOpen(false)
+                setEditingItem(null)
+            }
         } catch (error) {
             console.error('Error saving diagram:', error)
+            throw error
         }
     }, [editingItem, createDiagram, updateDiagram, id])
 
@@ -456,7 +500,12 @@ function FolderContent({ params }: { params: Promise<{ id: string }> }) {
                     setEditingItem(null)
                 }
             }}>
-                <DialogContent className="max-w-5xl h-[85vh] p-0 gap-0">
+                <DialogContent className={EDITOR_DIALOG_CONTENT_CLASS} showCloseButton={false}>
+                    <DialogTitle className="sr-only">
+                        {editorType === 'note'
+                            ? (editingItem ? 'Edit note' : 'New note')
+                            : (editingItem ? 'Edit diagram' : 'New diagram')}
+                    </DialogTitle>
                     {editorType === 'note' ? (
                         <NoteEditor
                             initialTitle={editingItem && 'linkedArtifacts' in editingItem ? editingItem.title : undefined}
@@ -471,6 +520,13 @@ function FolderContent({ params }: { params: Promise<{ id: string }> }) {
                                 setEditorOpen(false)
                                 setEditingItem(null)
                             }}
+                            onExpand={(draft) => {
+                                const noteId = editingItem && 'linkedArtifacts' in editingItem ? editingItem.id : null
+                                stashNoteDraft({ ...draft, noteId })
+                                setEditorOpen(false)
+                                setEditingItem(null)
+                                router.push(noteEditorHref({ id: noteId }))
+                            }}
                         />
                     ) : (
                         <DiagramEditor
@@ -483,6 +539,13 @@ function FolderContent({ params }: { params: Promise<{ id: string }> }) {
                             onCancel={() => {
                                 setEditorOpen(false)
                                 setEditingItem(null)
+                            }}
+                            onExpand={(draft) => {
+                                const diagramId = editingItem && 'diagramType' in editingItem ? editingItem.id : null
+                                stashDiagramDraft({ ...draft, diagramId })
+                                setEditorOpen(false)
+                                setEditingItem(null)
+                                router.push(diagramEditorHref({ id: diagramId }))
                             }}
                         />
                     )}

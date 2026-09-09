@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getRemoteConfig, isSupported } from 'firebase/remote-config'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -17,5 +18,22 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const googleProvider = new GoogleAuthProvider()
+
+/** Lazily created; null until first successful client init. */
+let remoteConfigInstance: ReturnType<typeof getRemoteConfig> | null = null
+
+export async function getAppRemoteConfig() {
+  if (typeof window === 'undefined') return null
+  if (remoteConfigInstance) return remoteConfigInstance
+
+  const supported = await isSupported()
+  if (!supported) return null
+
+  remoteConfigInstance = getRemoteConfig(app)
+  remoteConfigInstance.settings.minimumFetchIntervalMillis =
+    process.env.NODE_ENV === 'development' ? 0 : 60 * 60 * 1000
+
+  return remoteConfigInstance
+}
 
 export default app

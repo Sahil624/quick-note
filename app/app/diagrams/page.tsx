@@ -24,11 +24,17 @@ import { DiagramEditor } from '@/components/diagram-editor'
 import { useAuth } from '@/lib/auth-context'
 import { useNotes } from '@/lib/notes-context'
 import { Diagram } from '@/lib/types'
-import mermaid from 'mermaid'
+import { renderMermaid } from '@/lib/mermaid'
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  EDITOR_DIALOG_CONTENT_CLASS,
+  stashDiagramDraft,
+  diagramEditorHref,
+} from '@/lib/editor-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,8 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useSearchParams } from 'next/navigation'
-
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
 function Loading() {
@@ -56,14 +61,6 @@ function Loading() {
 }
 
 
-// Initialize mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'neutral',
-  securityLevel: 'loose',
-  fontFamily: 'inherit',
-})
-
 export default function DiagramsPage() {
   return (
     <Suspense fallback={<Loading />}>
@@ -73,6 +70,7 @@ export default function DiagramsPage() {
 }
 
 function DiagramsContent() {
+  const router = useRouter()
   const { isAnonymous } = useAuth()
   const {
     diagrams,
@@ -114,22 +112,40 @@ function DiagramsContent() {
     setEditorOpen(true)
   }, [])
 
-  const handleSaveDiagram = useCallback(async (data: {
-    title: string;
-    content: string;
-    tags: string[];
-    folderId: string | null;
-  }) => {
+  const handleSaveDiagram = useCallback(async (
+    data: {
+      title: string
+      content: string
+      tags: string[]
+      folderId: string | null
+    },
+    options?: { reason?: 'manual' | 'autosave' }
+  ) => {
+    const autosave = options?.reason === 'autosave'
     try {
       if (editingDiagram) {
         await updateDiagram(editingDiagram.id, data)
       } else {
-        await createDiagram(data.title, data.content, data.folderId, data.tags)
+        const id = await createDiagram(data.title, data.content, data.folderId, data.tags)
+        if (autosave) {
+          setEditingDiagram({
+            id,
+            title: data.title,
+            content: data.content,
+            tags: data.tags,
+            folderId: data.folderId,
+            diagramType: 'mermaid',
+          } as Diagram)
+          return
+        }
       }
-      setEditorOpen(false)
-      setEditingDiagram(null)
+      if (!autosave) {
+        setEditorOpen(false)
+        setEditingDiagram(null)
+      }
     } catch (error) {
       console.error('Error saving diagram:', error)
+      throw error
     }
   }, [editingDiagram, createDiagram, updateDiagram])
 
@@ -260,7 +276,10 @@ function DiagramsContent() {
           setEditingDiagram(null)
         }
       }}>
-        <DialogContent className="container max-h-[85vh] h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
+        <DialogContent className={EDITOR_DIALOG_CONTENT_CLASS} showCloseButton={false}>
+          <DialogTitle className="sr-only">
+            {editingDiagram ? 'Edit diagram' : 'New diagram'}
+          </DialogTitle>
           <DiagramEditor
             initialTitle={editingDiagram?.title}
             initialContent={editingDiagram?.content}
@@ -277,6 +296,12 @@ function DiagramsContent() {
               setEditorOpen(false)
               setEditingDiagram(null)
             } : undefined}
+            onExpand={(draft) => {
+              stashDiagramDraft({ ...draft, diagramId: editingDiagram?.id ?? null })
+              setEditorOpen(false)
+              setEditingDiagram(null)
+              router.push(diagramEditorHref({ id: editingDiagram?.id }))
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -301,16 +326,19 @@ function DiagramCard({
   const [svg, setSvg] = useState<string>('')
 
   useEffect(() => {
+    let cancelled = false
     const renderDiagram = async () => {
       try {
-        const id = `diagram-card-${diagram.id}-${Date.now()}`
-        const { svg } = await mermaid.render(id, diagram.content)
-        setSvg(svg)
+        const { svg: nextSvg } = await renderMermaid(diagram.content, `diagram-card-${diagram.id}`)
+        if (!cancelled) setSvg(nextSvg)
       } catch {
-        setSvg('')
+        if (!cancelled) setSvg('')
       }
     }
     renderDiagram()
+    return () => {
+      cancelled = true
+    }
   }, [diagram.content, diagram.id])
 
   const handleExportPng = async () => {

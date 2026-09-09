@@ -18,8 +18,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import mermaid from 'mermaid'
 import { useTheme } from 'next-themes'
+import { renderMermaid } from '@/lib/mermaid'
 import {
   Select,
   SelectContent,
@@ -28,6 +28,19 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Folder } from '@/lib/types'
+import {
+  SaveOptions,
+  autosaveStatusLabel,
+  useAutosave,
+  useAutosavePreference,
+} from '@/hooks/use-autosave'
+
+export type DiagramSavePayload = {
+  title: string
+  content: string
+  tags: string[]
+  folderId: string | null
+}
 
 interface DiagramEditorProps {
   initialTitle?: string
@@ -35,25 +48,22 @@ interface DiagramEditorProps {
   initialTags?: string[]
   initialFolderId?: string | null
   folders?: Folder[]
-  onSave: (data: {
-    title: string;
-    content: string;
-    tags: string[];
-    folderId: string | null;
-  }) => void
+  onSave: (data: DiagramSavePayload, options?: SaveOptions) => void | Promise<void>
   onCancel?: () => void
   onDelete?: () => void
+  onExpand?: (draft: DiagramSavePayload) => void
 }
 
 type ViewMode = 'edit' | 'preview' | 'split'
 
-// Initialize mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'neutral',
-  securityLevel: 'loose',
-  fontFamily: 'inherit',
-})
+function snapshotDiagram(data: DiagramSavePayload) {
+  return JSON.stringify({
+    title: data.title || 'Untitled Diagram',
+    content: data.content,
+    tags: data.tags,
+    folderId: data.folderId,
+  })
+}
 
 const DIAGRAM_TEMPLATES = [
   {
@@ -140,6 +150,7 @@ export function DiagramEditor({
   onSave,
   onCancel,
   onDelete,
+  onExpand,
 }: DiagramEditorProps) {
   const { resolvedTheme } = useTheme()
   const [title, setTitle] = useState(initialTitle)
@@ -151,6 +162,7 @@ export function DiagramEditor({
   const [renderedSvg, setRenderedSvg] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [autosaveEnabled, setAutosaveEnabled] = useAutosavePreference()
   const previewRef = useRef<HTMLDivElement>(null)
   const renderIdRef = useRef(0)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,9 +178,7 @@ export function DiagramEditor({
       const currentRenderId = ++renderIdRef.current
 
       try {
-        // Create a unique id for this render
-        const id = `mermaid-preview-${Date.now()}`
-        const { svg } = await mermaid.render(id, content)
+        const { svg } = await renderMermaid(content, 'mermaid-preview')
 
         // Only update if this is still the latest render request
         if (currentRenderId === renderIdRef.current) {
@@ -337,14 +347,44 @@ export function DiagramEditor({
     setTags(tags.filter(tag => tag !== tagToRemove))
   }, [tags])
 
-  const handleSave = useCallback(() => {
-    onSave({
-      title: title || 'Untitled Diagram',
-      content,
-      tags,
-      folderId
+  const payload = useMemo<DiagramSavePayload>(
+    () => ({ title, content, tags, folderId }),
+    [title, content, tags, folderId]
+  )
+
+  const lastSavedRef = useRef(
+    snapshotDiagram({
+      title: initialTitle,
+      content: initialContent || DIAGRAM_TEMPLATES[0].content,
+      tags: initialTags,
+      folderId: initialFolderId,
     })
-  }, [title, content, tags, folderId, onSave])
+  )
+  const isDirty = snapshotDiagram(payload) !== lastSavedRef.current
+
+  const persist = useCallback(
+    async (reason: 'manual' | 'autosave') => {
+      const data: DiagramSavePayload = {
+        title: title || 'Untitled Diagram',
+        content,
+        tags,
+        folderId,
+      }
+      await onSave(data, { reason })
+      lastSavedRef.current = snapshotDiagram(data)
+    },
+    [title, content, tags, folderId, onSave]
+  )
+
+  const autosaveStatus = useAutosave({
+    enabled: autosaveEnabled,
+    isDirty,
+    save: () => persist('autosave'),
+  })
+
+  const handleSave = useCallback(() => {
+    void persist('manual')
+  }, [persist])
 
   const handleExportSvg = useCallback(() => {
     if (!renderedSvg) return
@@ -374,8 +414,7 @@ export function DiagramEditor({
       const safeContent = `%%{init: {'flowchart': {'htmlLabels': false}, 'theme': 'default'}}%%\n${content}`
 
       // Render
-      const id = `mermaid-export-${Date.now()}`
-      const { svg } = await mermaid.render(id, safeContent)
+      const { svg } = await renderMermaid(safeContent, 'mermaid-export')
 
       // Parse & Size
       const parser = new DOMParser()
@@ -494,9 +533,9 @@ export function DiagramEditor({
   }, [])
 
   return (
-    <div className="h-full flex flex-col bg-background max-h-[80vh]">
+    <div className="h-full min-h-0 flex flex-col bg-background">
       {/* Header */}
-      <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-4">
+      <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-4 shrink-0">
         <Input
           type="text"
           placeholder="Diagram title..."
@@ -505,6 +544,18 @@ export function DiagramEditor({
           className="text-lg font-medium border-0 bg-transparent px-0 focus-visible:ring-0 max-w-md"
         />
         <div className="flex items-center gap-2">
+          <label className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none mr-1">
+            <input
+              type="checkbox"
+              className="rounded border-border"
+              checked={autosaveEnabled}
+              onChange={(e) => setAutosaveEnabled(e.target.checked)}
+            />
+            Autosave
+          </label>
+          <span className="hidden md:inline text-xs text-muted-foreground min-w-[7rem]">
+            {autosaveStatusLabel(autosaveStatus, autosaveEnabled)}
+          </span>
           <div className="flex border border-border rounded-lg overflow-hidden">
             <Button
               variant={viewMode === 'edit' ? 'secondary' : 'ghost'}
@@ -531,6 +582,16 @@ export function DiagramEditor({
               <Eye className="w-4 h-4" />
             </Button>
           </div>
+          {onExpand && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Open in full page"
+              onClick={() => onExpand(payload)}
+            >
+              <Maximize2 className="w-4 h-4" />
+            </Button>
+          )}
           {onCancel && (
             <Button variant="ghost" size="sm" onClick={onCancel}>
               <X className="w-4 h-4" />
@@ -541,7 +602,7 @@ export function DiagramEditor({
               <Trash2 className="w-4 h-4" />
             </Button>
           )}
-          <Button size="sm" onClick={handleSave}>
+          <Button size="sm" onClick={handleSave} disabled={!isDirty && autosaveStatus !== 'error'}>
             <Save className="w-4 h-4 mr-2" />
             Save
           </Button>
@@ -549,7 +610,7 @@ export function DiagramEditor({
       </div>
 
       {/* Toolbar */}
-      <div className="border-b border-border px-4 py-2 flex items-center gap-4 flex-wrap">
+      <div className="border-b border-border px-4 py-2 flex items-center gap-4 flex-wrap shrink-0">
         <Select onValueChange={handleTemplateSelect}>
           <SelectTrigger className="w-[180px] h-8">
             <SelectValue placeholder="Insert template..." />
@@ -652,10 +713,10 @@ export function DiagramEditor({
               className="flex-1 bg-card rounded-lg border border-border overflow-hidden relative cursor-grab"
             >
               {error ? (
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <div className="text-destructive text-sm text-center">
-                    <p className="font-medium mb-2">Diagram Error</p>
-                    <pre className="text-xs bg-destructive/10 p-2 rounded">{error}</pre>
+                <div className="absolute inset-0 flex items-center justify-center p-4 overflow-auto">
+                  <div className="text-destructive text-sm max-w-full">
+                    <p className="font-medium mb-2 text-center">Diagram Error</p>
+                    <pre className="text-xs bg-destructive/10 p-3 rounded whitespace-pre-wrap break-words text-left">{error}</pre>
                   </div>
                 </div>
               ) : renderedSvg ? (

@@ -27,7 +27,13 @@ import { Note, SortType } from '@/lib/types'
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  EDITOR_DIALOG_CONTENT_CLASS,
+  stashNoteDraft,
+  noteEditorHref,
+} from '@/lib/editor-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,7 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense } from 'react'
 
 export default function NotesPage() {
@@ -62,6 +68,7 @@ function Loading() {
 }
 
 function NotesContent() {
+  const router = useRouter()
   const { isAnonymous } = useAuth()
   const {
     notes,
@@ -124,23 +131,41 @@ function NotesContent() {
     setEditorOpen(true)
   }, [])
 
-  const handleSaveNote = useCallback(async (data: {
-    title: string;
-    content: string;
-    tags: string[];
-    folderId: string | null;
-    linkedArtifacts: string[];
-  }) => {
+  const handleSaveNote = useCallback(async (
+    data: {
+      title: string
+      content: string
+      tags: string[]
+      folderId: string | null
+      linkedArtifacts: string[]
+    },
+    options?: { reason?: 'manual' | 'autosave' }
+  ) => {
+    const autosave = options?.reason === 'autosave'
     try {
       if (editingNote) {
-        await updateNote(editingNote.id, data)
+        await updateNote(editingNote.id, data, { createVersion: !autosave })
       } else {
-        await createNote(data.title, data.content, data.folderId, data.tags, data.linkedArtifacts)
+        const id = await createNote(data.title, data.content, data.folderId, data.tags, data.linkedArtifacts)
+        if (autosave) {
+          setEditingNote({
+            id,
+            title: data.title,
+            content: data.content,
+            tags: data.tags,
+            folderId: data.folderId,
+            linkedArtifacts: data.linkedArtifacts,
+          } as Note)
+          return
+        }
       }
-      setEditorOpen(false)
-      setEditingNote(null)
+      if (!autosave) {
+        setEditorOpen(false)
+        setEditingNote(null)
+      }
     } catch (error) {
       console.error('Error saving note:', error)
+      throw error
     }
   }, [editingNote, createNote, updateNote])
 
@@ -302,7 +327,10 @@ function NotesContent() {
             setEditingNote(null)
           }
         }}>
-          <DialogContent className="max-w-5xl h-[85vh] p-0 gap-0">
+          <DialogContent className={EDITOR_DIALOG_CONTENT_CLASS} showCloseButton={false}>
+            <DialogTitle className="sr-only">
+              {editingNote ? 'Edit note' : 'New note'}
+            </DialogTitle>
             <NoteEditor
               initialTitle={editingNote?.title}
               initialContent={editingNote?.content}
@@ -315,6 +343,12 @@ function NotesContent() {
               onCancel={() => {
                 setEditorOpen(false)
                 setEditingNote(null)
+              }}
+              onExpand={(draft) => {
+                stashNoteDraft({ ...draft, noteId: editingNote?.id ?? null })
+                setEditorOpen(false)
+                setEditingNote(null)
+                router.push(noteEditorHref({ id: editingNote?.id }))
               }}
             />
           </DialogContent>

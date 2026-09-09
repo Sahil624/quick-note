@@ -1,22 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useMemo, memo } from 'react'
-import mermaid from 'mermaid'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
+import { renderMermaid } from '@/lib/mermaid'
 
 interface MarkdownRendererProps {
   content: string
   className?: string
 }
-
-// Initialize mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'neutral',
-  securityLevel: 'loose',
-  fontFamily: 'inherit',
-})
 
 function parseMarkdown(text: string): string {
   let html = text
@@ -114,31 +106,41 @@ function escapeHtml(text: string): string {
 
 function MarkdownRendererComponent({ content, className = '' }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  
+
   const htmlContent = useMemo(() => parseMarkdown(content), [content])
 
   useEffect(() => {
     if (!containerRef.current) return
+    let cancelled = false
 
-    const mermaidContainers = containerRef.current.querySelectorAll('.mermaid-container')
-    
-    mermaidContainers.forEach(async (container) => {
-      const code = decodeURIComponent(container.getAttribute('data-mermaid') || '')
-      const id = container.getAttribute('id') || ''
-      
-      if (code && id) {
+    const mermaidContainers = Array.from(
+      containerRef.current.querySelectorAll('.mermaid-container')
+    ) as HTMLElement[]
+
+    ;(async () => {
+      for (const container of mermaidContainers) {
+        if (cancelled) return
+        const code = decodeURIComponent(container.getAttribute('data-mermaid') || '')
+        if (!code) continue
         try {
-          const { svg } = await mermaid.render(id + '-svg', code)
-          container.innerHTML = svg
+          const { svg } = await renderMermaid(code, container.id || 'md-mermaid')
+          if (!cancelled) container.innerHTML = svg
         } catch (error) {
-          container.innerHTML = `<div class="mermaid-error">Error rendering diagram: ${error}</div>`
+          if (!cancelled) {
+            const message = error instanceof Error ? error.message : String(error)
+            container.innerHTML = `<div class="mermaid-error">${escapeHtml(message)}</div>`
+          }
         }
       }
-    })
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [htmlContent])
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className={`markdown-content ${className}`}
       dangerouslySetInnerHTML={{ __html: htmlContent }}

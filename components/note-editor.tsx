@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   Bold,
   Italic,
@@ -23,7 +23,8 @@ import {
   Tag,
   FolderOpen,
   Plus,
-  Trash2
+  Trash2,
+  Maximize2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,6 +46,20 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Folder, Diagram } from '@/lib/types'
+import {
+  SaveOptions,
+  autosaveStatusLabel,
+  useAutosave,
+  useAutosavePreference,
+} from '@/hooks/use-autosave'
+
+export type NoteSavePayload = {
+  title: string
+  content: string
+  tags: string[]
+  folderId: string | null
+  linkedArtifacts: string[]
+}
 
 interface NoteEditorProps {
   initialTitle?: string
@@ -54,19 +69,24 @@ interface NoteEditorProps {
   initialLinkedArtifacts?: string[]
   folders?: Folder[]
   diagrams?: Diagram[]
-  onSave: (data: {
-    title: string;
-    content: string;
-    tags: string[];
-    folderId: string | null;
-    linkedArtifacts: string[];
-  }) => void
+  onSave: (data: NoteSavePayload, options?: SaveOptions) => void | Promise<void>
   onCancel?: () => void
   onDelete?: () => void
+  onExpand?: (draft: NoteSavePayload) => void
   isAnonymous?: boolean
 }
 
 type ViewMode = 'edit' | 'preview' | 'split'
+
+function snapshotNote(data: NoteSavePayload) {
+  return JSON.stringify({
+    title: data.title || 'Untitled Note',
+    content: data.content,
+    tags: data.tags,
+    folderId: data.folderId,
+    linkedArtifacts: data.linkedArtifacts,
+  })
+}
 
 export function NoteEditor({
   initialTitle = '',
@@ -79,6 +99,7 @@ export function NoteEditor({
   onSave,
   onCancel,
   onDelete,
+  onExpand,
   isAnonymous = false,
 }: NoteEditorProps) {
   const [title, setTitle] = useState(initialTitle)
@@ -89,6 +110,50 @@ export function NoteEditor({
   const [linkedArtifacts, setLinkedArtifacts] = useState<string[]>(initialLinkedArtifacts)
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [artifactDialogOpen, setArtifactDialogOpen] = useState(false)
+  const [autosaveEnabled, setAutosaveEnabled] = useAutosavePreference()
+
+  const payload = useMemo<NoteSavePayload>(
+    () => ({
+      title,
+      content,
+      tags,
+      folderId,
+      linkedArtifacts,
+    }),
+    [title, content, tags, folderId, linkedArtifacts]
+  )
+
+  const lastSavedRef = useRef(
+    snapshotNote({
+      title: initialTitle,
+      content: initialContent,
+      tags: initialTags,
+      folderId: initialFolderId,
+      linkedArtifacts: initialLinkedArtifacts,
+    })
+  )
+  const isDirty = snapshotNote(payload) !== lastSavedRef.current
+
+  const persist = useCallback(
+    async (reason: 'manual' | 'autosave') => {
+      const data: NoteSavePayload = {
+        title: title || 'Untitled Note',
+        content,
+        tags,
+        folderId,
+        linkedArtifacts,
+      }
+      await onSave(data, { reason })
+      lastSavedRef.current = snapshotNote(data)
+    },
+    [title, content, tags, folderId, linkedArtifacts, onSave]
+  )
+
+  const autosaveStatus = useAutosave({
+    enabled: autosaveEnabled,
+    isDirty,
+    save: () => persist('autosave'),
+  })
 
   const insertText = useCallback((before: string, after: string = '', placeholder: string = '') => {
     const textarea = document.querySelector('textarea[data-editor="true"]') as HTMLTextAreaElement
@@ -101,7 +166,6 @@ export function NoteEditor({
 
     setContent(newText)
 
-    // Set cursor position after the operation
     setTimeout(() => {
       textarea.focus()
       const newCursorPos = start + before.length + selectedText.length
@@ -137,20 +201,13 @@ export function NoteEditor({
   }, [tags])
 
   const handleSave = useCallback(() => {
-    onSave({
-      title: title || 'Untitled Note',
-      content,
-      tags,
-      folderId,
-      linkedArtifacts
-    })
-  }, [title, content, tags, folderId, linkedArtifacts, onSave])
+    void persist('manual')
+  }, [persist])
 
   const handleLinkArtifact = useCallback((artifactId: string) => {
     if (!linkedArtifacts.includes(artifactId)) {
       const diagram = diagrams.find(d => d.id === artifactId)
       if (diagram) {
-        // Insert the mermaid code into the note
         insertText(`\n\n<!-- Linked Diagram: ${diagram.title} -->\n\`\`\`mermaid\n${diagram.content}\n\`\`\`\n`, '')
         setLinkedArtifacts([...linkedArtifacts, artifactId])
       }
@@ -162,10 +219,20 @@ export function NoteEditor({
     return content
   }, [content])
 
+  useEffect(() => {
+    if (!autosaveEnabled || !isDirty) return
+    const onLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onLeave)
+    return () => window.removeEventListener('beforeunload', onLeave)
+  }, [autosaveEnabled, isDirty])
+
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full min-h-0 flex flex-col bg-background">
       {/* Header */}
-      <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-4">
+      <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-4 shrink-0">
         <Input
           type="text"
           placeholder="Note title..."
@@ -174,6 +241,18 @@ export function NoteEditor({
           className="text-lg font-medium border-0 bg-transparent px-0 focus-visible:ring-0 max-w-md"
         />
         <div className="flex items-center gap-2">
+          <label className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none mr-1">
+            <input
+              type="checkbox"
+              className="rounded border-border"
+              checked={autosaveEnabled}
+              onChange={(e) => setAutosaveEnabled(e.target.checked)}
+            />
+            Autosave
+          </label>
+          <span className="hidden md:inline text-xs text-muted-foreground min-w-[7rem]">
+            {autosaveStatusLabel(autosaveStatus, autosaveEnabled)}
+          </span>
           <div className="flex border border-border rounded-lg overflow-hidden">
             <Button
               variant={viewMode === 'edit' ? 'secondary' : 'ghost'}
@@ -200,6 +279,16 @@ export function NoteEditor({
               <Eye className="w-4 h-4" />
             </Button>
           </div>
+          {onExpand && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Open in full page"
+              onClick={() => onExpand(payload)}
+            >
+              <Maximize2 className="w-4 h-4" />
+            </Button>
+          )}
           {onCancel && (
             <Button variant="ghost" size="sm" onClick={onCancel}>
               <X className="w-4 h-4" />
@@ -210,7 +299,7 @@ export function NoteEditor({
               <Trash2 className="w-4 h-4" />
             </Button>
           )}
-          <Button size="sm" onClick={handleSave}>
+          <Button size="sm" onClick={handleSave} disabled={!isDirty && autosaveStatus !== 'error'}>
             <Save className="w-4 h-4 mr-2" />
             Save
           </Button>
@@ -219,14 +308,14 @@ export function NoteEditor({
 
       {/* Toolbar */}
       {viewMode !== 'preview' && (
-        <div className="border-b border-border px-4 py-2 flex items-center gap-1 flex-wrap">
-          {toolbarActions.map(({ icon: Icon, action, title }) => (
+        <div className="border-b border-border px-4 py-2 flex items-center gap-1 flex-wrap shrink-0">
+          {toolbarActions.map(({ icon: Icon, action, title: actionTitle }) => (
             <Button
-              key={title}
+              key={actionTitle}
               variant="ghost"
               size="sm"
               onClick={action}
-              title={title}
+              title={actionTitle}
               className="h-8 w-8 p-0"
             >
               <Icon className="w-4 h-4" />
@@ -238,38 +327,30 @@ export function NoteEditor({
               <div className="w-px h-6 bg-border mx-2" />
               <Dialog open={artifactDialogOpen} onOpenChange={setArtifactDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm" title="Link Artifact" className="h-8 px-2">
-                    <Plus className="w-4 h-4 mr-1" />
-                    Link Artifact
+                  <Button variant="ghost" size="sm" title="Link Artifact" className="h-8 gap-1">
+                    <Plus className="w-4 h-4" />
+                    <span className="text-xs">Artifact</span>
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Link an Artifact</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4 mt-4">
+                  <div className="space-y-2 max-h-60 overflow-auto">
                     {diagrams.length === 0 ? (
-                      <p className="text-muted-foreground text-sm text-center py-4">
-                        No diagrams available. Create a diagram first.
-                      </p>
+                      <p className="text-sm text-muted-foreground">No diagrams available</p>
                     ) : (
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                        {diagrams.map(diagram => (
-                          <button
-                            key={diagram.id}
-                            onClick={() => handleLinkArtifact(diagram.id)}
-                            className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex items-center gap-2">
-                              <GitBranch className="w-4 h-4 text-muted-foreground" />
-                              <span className="font-medium text-sm">{diagram.title}</span>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-1 truncate">
-                              {diagram.content.substring(0, 50)}...
-                            </p>
-                          </button>
-                        ))}
-                      </div>
+                      diagrams.map(diagram => (
+                        <Button
+                          key={diagram.id}
+                          variant="outline"
+                          className="w-full justify-start"
+                          onClick={() => handleLinkArtifact(diagram.id)}
+                        >
+                          <GitBranch className="w-4 h-4 mr-2" />
+                          {diagram.title}
+                        </Button>
+                      ))
                     )}
                   </div>
                 </DialogContent>
@@ -281,17 +362,22 @@ export function NoteEditor({
 
       {/* Tags and Folder (for logged in users) */}
       {!isAnonymous && (
-        <div className="border-b border-border px-4 py-2 flex items-center gap-4 flex-wrap">
+        <div className="border-b border-border px-4 py-2 flex items-center gap-4 flex-wrap shrink-0">
           <div className="flex items-center gap-2">
             <FolderOpen className="w-4 h-4 text-muted-foreground" />
-            <Select value={folderId || 'none'} onValueChange={(val) => setFolderId(val === 'none' ? null : val)}>
-              <SelectTrigger className="w-[180px] h-8">
+            <Select
+              value={folderId || 'none'}
+              onValueChange={(v) => setFolderId(v === 'none' ? null : v)}
+            >
+              <SelectTrigger className="w-[160px] h-8">
                 <SelectValue placeholder="No folder" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No folder</SelectItem>
                 {folders.map(folder => (
-                  <SelectItem key={folder.id} value={folder.id}>{folder.name}</SelectItem>
+                  <SelectItem key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -323,9 +409,9 @@ export function NoteEditor({
       )}
 
       {/* Editor Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         {(viewMode === 'edit' || viewMode === 'split') && (
-          <div className={`${viewMode === 'split' ? 'w-1/2 border-r border-border' : 'w-full'} flex flex-col`}>
+          <div className={`${viewMode === 'split' ? 'w-1/2 border-r border-border' : 'w-full'} flex flex-col min-h-0`}>
             <Textarea
               data-editor="true"
               value={content}
@@ -350,12 +436,12 @@ graph TD
 ```
 
 $$E = mc^2$$"
-              className="flex-1 resize-none border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4"
+              className="flex-1 min-h-0 resize-none border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 overflow-auto"
             />
           </div>
         )}
         {(viewMode === 'preview' || viewMode === 'split') && (
-          <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-auto p-4`}>
+          <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} min-h-0 overflow-auto p-4`}>
             <MarkdownRenderer content={processedContent} className="prose-sm" />
           </div>
         )}
